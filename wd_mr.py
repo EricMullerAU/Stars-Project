@@ -120,6 +120,10 @@ rho_c = 1e7*u.g/u.cm**3
 plt.plot(wd_structure(rho_c)[0], wd_structure(rho_c)[2])
 plt.show()
 
-# %%
-wd_structure(rho_c)[2][-1]
+#%%
+
+# Convert density to number density using n_e = 
+
+
+
 # %%
