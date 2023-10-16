@@ -3,6 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import astropy.constants as c
 import astropy.units as u
+from astropy import table
+from astropy.table import QTable
+
+import smplotlib
 
 #%%
 def M_rho_deriv_degen(r_in_rsun, M_lrho, Z_on_A=0.5):
@@ -122,8 +126,141 @@ plt.show()
 
 #%%
 
-# Convert density to number density using n_e = 
+# Convert density to number density using n_e = rho/m_H/mu_e
+mu_e = 2
 
+ne_profile = wd_structure(rho_c)[2] / (c.m_p + c.m_e) / mu_e
+radius_profile = wd_structure(rho_c)[0]
 
+plt.plot(radius_profile, ne_profile)
+plt.show()
 
 # %%
+
+# Add all the functions for electron pressure.
+def fullyDegenElectronPressure_routine(n_e, mu_e, thresh):
+    # Eqn 37 in Mike's notes
+    p_max = (3 * n_e * c.h**3 / 8 / np.pi)**(1/3)
+    
+    if p_max < thresh * c.m_e * c.c:
+        return calculate_non_relativistic_pressure_routine(n_e)
+    elif thresh * p_max > c.m_e * c.c:
+        return calculate_extreme_relativistic_pressure_routine(n_e)
+    else:
+        return calculate_intermediate_pressure_routine(n_e, p_max)
+    
+def calculate_non_relativistic_pressure_routine(n_e):
+    # Eqn 43 in Mike's notes
+    P_e = c.h**2 / 60 / np.pi**(2/3) / c.m_e * (3 * n_e)**(5/3)
+    regime = 'NR'
+    return [n_e.si.value, P_e.si.value, regime]
+
+def calculate_extreme_relativistic_pressure_routine(n_e):
+    # Eqn 45 in Mike's notes
+    P_e = c.c * c.h / 24 / np.pi**(1/3) * (3 * n_e)**(4/3)
+    regime = 'ER'
+    return [n_e.si.value, P_e.si.value, regime]
+
+def calculate_intermediate_pressure_routine(n_e, p_max):
+    # Eqn 47 in Mike's notes
+    y = (p_max / c.m_e / c.c).si
+    P_e = np.pi * c.m_e**4 * c.c**5 / 3 / c.h**3 * (y * (1 + y**2)**(1/2) * (2 * y**2 - 3) + 3 * np.arcsinh(y).value)
+    regime = 'IN'
+    return [n_e.si.value, P_e.si.value, regime]
+
+def fullyDegenElectronPressure(n_e, mu_e=2, thresh=0.001):
+    # Check if input has multiple values (numpy array, list, etc.)
+    if type(n_e.value) == np.ndarray or type(n_e.value) == list:
+        output = []
+        
+        # Calculate pressure for each value of n_e
+        for i, n in enumerate(n_e):
+            output.append(fullyDegenElectronPressure_routine(n, mu_e, thresh))
+        
+    else:
+        output = fullyDegenElectronPressure_routine(n_e, mu_e, thresh)
+    
+    # Create QTable with appropriate units and dtype
+    return table.QTable(np.asarray(output), names=['n_e', 'P_e', 'regime'],
+                    units=[1/u.m**3, u.N/u.m**2, None], dtype=['f8', 'f8', 'S2'],
+                    meta={'regime': ['non-relativistic', 'extreme-relativistic', 'intermediate']})
+    
+def calculate_extreme_relativistic_pressure(n_e):
+    if type(n_e.value) == np.ndarray or type(n_e.value) == list:
+        output = []
+        
+        # Calculate pressure for each value of n_e
+        for i, n in enumerate(n_e):
+            output.append(calculate_extreme_relativistic_pressure_routine(n))
+        
+    else:
+        output = calculate_extreme_relativistic_pressure_routine(n_e)
+    
+    # Create QTable with appropriate units and dtype
+    return table.QTable(np.asarray(output), names=['n_e', 'P_e', 'regime'],
+                    units=[1/u.m**3, u.N/u.m**2, None], dtype=['f8', 'f8', 'S2'],
+                    meta={'regime': ['non-relativistic', 'extreme-relativistic', 'intermediate']})
+
+def calculate_non_relativistic_pressure(n_e):
+    if type(n_e.value) == np.ndarray or type(n_e.value) == list:
+        output = []
+        
+        # Calculate pressure for each value of n_e
+        for i, n in enumerate(n_e):
+            output.append(calculate_non_relativistic_pressure_routine(n))
+        
+    else:
+        output = calculate_non_relativistic_pressure_routine(n_e)
+    
+    # Create QTable with appropriate units and dtype
+    return table.QTable(np.asarray(output), names=['n_e', 'P_e', 'regime'],
+                    units=[1/u.m**3, u.N/u.m**2, None], dtype=['f8', 'f8', 'S2'],
+                    meta={'regime': ['non-relativistic', 'extreme-relativistic', 'intermediate']})
+
+def calculate_intermediate_pressure(n_e):
+    if type(n_e.value) == np.ndarray or type(n_e.value) == list:
+        output = []
+        
+        # Calculate pressure for each value of n_e
+        for i, n in enumerate(n_e):
+            p_max = (3 * n * c.h**3 / 8 / np.pi)**(1/3)
+            output.append(calculate_intermediate_pressure_routine(n, p_max))
+        
+    else:
+        output = calculate_intermediate_pressure_routine(n_e, p_max)
+    
+    # Create QTable with appropriate units and dtype
+    return table.QTable(np.asarray(output), names=['n_e', 'P_e', 'regime'],
+                    units=[1/u.m**3, u.N/u.m**2, None], dtype=['f8', 'f8', 'S2'],
+                    meta={'regime': ['non-relativistic', 'extreme-relativistic', 'intermediate']})
+
+
+#%%
+
+# Now convert the number density to electron pressure
+P_e = fullyDegenElectronPressure(ne_profile, mu_e=mu_e)
+
+plt.figure(dpi=300)
+plt.plot(radius_profile,P_e['P_e'])
+# plt.yscale('log')
+plt.ylabel(r'Electron Pressure (N/m$^2$)')
+plt.xlabel(r'Radius (M$_{\odot}$)')
+plt.show()
+# %%
+# Now plot it for all three different cases one one plot
+
+plt.figure(dpi=300)
+P_e_NR = calculate_non_relativistic_pressure(ne_profile)
+P_e_ER = calculate_extreme_relativistic_pressure(ne_profile)
+P_e_IN = calculate_intermediate_pressure(ne_profile)
+plt.plot(radius_profile,P_e_NR['P_e'], label='non-relativistic')
+plt.plot(radius_profile,P_e_ER['P_e'], label='extreme-relativistic')
+plt.plot(radius_profile,P_e_IN['P_e'], label='intermediate')
+# plt.yscale('log')
+# plt.xlim(0.010184, 0.010185)
+# plt.ylim(1e8,1e14)
+# plt.xscale('log')
+plt.ylabel(r'Electron Pressure (N/m$^2$)')
+plt.xlabel(r'Radius (M$_{\odot}$)')
+plt.legend()
+plt.show()
